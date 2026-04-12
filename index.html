@@ -143,6 +143,13 @@
             text-align: center;
             text-shadow: 0px 1px 2px rgba(0,0,0,0.5);
         }
+        .mode-selector {
+            background: #f3f4f6;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            border: 1px solid #e5e7eb;
+        }
     </style>
 </head>
 <body>
@@ -178,12 +185,18 @@
     <p>Find the closest populations to the coordinates in the text box above.</p>
     
     <div class="form-group">
-        <label>Select Reference:</label>
+        <label>Reference Type:</label>
+        <div class="radio-group mode-selector">
+            <label><input type="radio" name="distMode" value="pop" checked onchange="toggleCustomSource()"> Populations (Averages)</label>
+            <label><input type="radio" name="distMode" value="ind" onchange="toggleCustomSource()"> Individuals</label>
+        </div>
+
+        <label>Select Category:</label>
         <div class="radio-group">
-            <label><input type="radio" name="distSource" value="modern_only.csv" checked onchange="toggleCustomSource()"> Modern</label>
-            <label><input type="radio" name="distSource" value="non_modern_only.csv" onchange="toggleCustomSource()"> Non-Modern</label>
-            <label><input type="radio" name="distSource" value="my_calculator_source.csv" onchange="toggleCustomSource()"> All</label>
-            <label><input type="radio" name="distSource" value="custom" onchange="toggleCustomSource()"> Custom</label>
+            <label><input type="radio" name="distCategory" value="modern" checked onchange="toggleCustomSource()"> Modern</label>
+            <label><input type="radio" name="distCategory" value="ancient" onchange="toggleCustomSource()"> Non-Modern</label>
+            <label><input type="radio" name="distCategory" value="all" onchange="toggleCustomSource()"> All</label>
+            <label><input type="radio" name="distCategory" value="custom" onchange="toggleCustomSource()"> Custom</label>
         </div>
         <textarea id="customSourceText" placeholder="Paste custom reference coordinates here..."></textarea>
     </div>
@@ -201,11 +214,20 @@
 <!-- SOURCE COORDINATES SECTION -->
 <div class="card">
     <h2>Calculator Sources</h2>
-    <p>Copy the reference populations to paste into the Vahaduo Source tab.</p>
+    <p>Copy reference files to paste into the Vahaduo Source tab.</p>
+    
+    <label style="font-size: 14px; margin-bottom: 5px; color: #4b5563;">Population Averages (min 5 samples):</label>
+    <div class="source-buttons" style="margin-bottom: 20px;">
+        <button class="btn-source" onclick="fetchAndCopy('modern_populations.csv', this)">Modern Populations</button>
+        <button class="btn-source" onclick="fetchAndCopy('non_modern_populations.csv', this)">Non-Modern Populations</button>
+        <button class="btn-source" onclick="fetchAndCopy('populations.csv', this)">All Populations</button>
+    </div>
+
+    <label style="font-size: 14px; margin-bottom: 5px; color: #4b5563;">Individual Samples:</label>
     <div class="source-buttons">
-        <button class="btn-source" onclick="fetchAndCopy('modern_only.csv', this)">Copy Modern Sources</button>
-        <button class="btn-source" onclick="fetchAndCopy('non_modern_only.csv', this)">Copy Non-Modern Sources</button>
-        <button class="btn-source" onclick="fetchAndCopy('my_calculator_source.csv', this)">Copy All Sources</button>
+        <button class="btn-source" onclick="fetchAndCopy('modern_only.csv', this)">Modern Individuals</button>
+        <button class="btn-source" onclick="fetchAndCopy('non_modern_only.csv', this)">Non-Modern Individuals</button>
+        <button class="btn-source" onclick="fetchAndCopy('my_calculator_source.csv', this)">All Individuals</button>
     </div>
 </div>
 
@@ -257,13 +279,9 @@
     // --- DISTANCE CALCULATOR LOGIC ---
 
     function toggleCustomSource() {
-        const val = document.querySelector('input[name="distSource"]:checked').value;
+        const cat = document.querySelector('input[name="distCategory"]:checked').value;
         const customArea = document.getElementById('customSourceText');
-        if (val === 'custom') {
-            customArea.style.display = 'block';
-        } else {
-            customArea.style.display = 'none';
-        }
+        customArea.style.display = (cat === 'custom') ? 'block' : 'none';
     }
 
     function getEuclideanDistance(arr1, arr2) {
@@ -275,20 +293,16 @@
         return Math.sqrt(sum);
     }
 
-    // Hardcoded Green-Yellow-Red color scale
     function getGnYlRdColor(val) {
         if (val <= 0.1) {
-            // 0 to 0.1: Green (120) to Yellow (60)
             let ratio = val / 0.1;
             let hue = 120 - (ratio * 60);
             return `hsl(${hue}, 80%, 45%)`;
         } else if (val <= 0.5) {
-            // 0.1 to 0.5: Yellow (60) to Red (0)
             let ratio = (val - 0.1) / 0.4;
             let hue = 60 - (ratio * 60);
             return `hsl(${hue}, 80%, 45%)`;
         } else {
-            // >= 0.5: Red (0)
             return `hsl(0, 80%, 45%)`;
         }
     }
@@ -301,7 +315,6 @@
         }
 
         const userLine = coordsText.split(/\r?\n/)[0].split(',');
-        const userName = userLine[0];
         const userCoords = userLine.slice(1).map(Number);
 
         if (userCoords.length < 2 || isNaN(userCoords[0])) {
@@ -309,20 +322,32 @@
             return;
         }
 
-        const sourceFile = document.querySelector('input[name="distSource"]:checked').value;
+        const mode = document.querySelector('input[name="distMode"]:checked').value;
+        const category = document.querySelector('input[name="distCategory"]:checked').value;
         const topN = parseInt(document.getElementById('topN').value) || 25;
         const resultsDiv = document.getElementById('distanceResults');
+
+        let sourceFile = "";
+        if (category !== 'custom') {
+            if (mode === 'ind') {
+                if (category === 'modern') sourceFile = 'modern_only.csv';
+                else if (category === 'ancient') sourceFile = 'non_modern_only.csv';
+                else sourceFile = 'my_calculator_source.csv';
+            } else {
+                if (category === 'modern') sourceFile = 'modern_populations.csv';
+                else if (category === 'ancient') sourceFile = 'non_modern_populations.csv';
+                else sourceFile = 'populations.csv';
+            }
+        }
 
         btn.disabled = true;
         btn.textContent = "Calculating...";
 
         try {
             let text = "";
-            if (sourceFile === 'custom') {
+            if (category === 'custom') {
                 text = document.getElementById('customSourceText').value;
-                if (!text.trim()) {
-                    throw new Error("Custom source text is empty.");
-                }
+                if (!text.trim()) throw new Error("Custom source text is empty.");
             } else {
                 const response = await fetch(sourceFile);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -352,39 +377,16 @@
                 return;
             }
 
-            // Build Table
-            let html = `
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 50px;">#</th>
-                            <th>Distance</th>
-                            <th>Population</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-
+            let html = `<table><thead><tr><th style="width: 50px;">#</th><th>Distance</th><th>${mode === 'ind' ? 'Individual' : 'Population'}</th></tr></thead><tbody>`;
             topResults.forEach((res, index) => {
                 const color = getGnYlRdColor(res.distance);
-                html += `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td>
-                            <span class="dist-badge" style="background-color: ${color};">
-                                ${res.distance.toFixed(4)}
-                            </span>
-                        </td>
-                        <td>${res.name}</td>
-                    </tr>
-                `;
+                html += `<tr><td>${index + 1}</td><td><span class="dist-badge" style="background-color: ${color};">${res.distance.toFixed(4)}</span></td><td>${res.name}</td></tr>`;
             });
-
             html += `</tbody></table>`;
             resultsDiv.innerHTML = html;
 
         } catch (e) {
-            alert(`Error calculating distances: ${e.message}`);
+            alert(`Error: ${e.message}`);
         } finally {
             btn.disabled = false;
             btn.textContent = "Calculate Distances";
@@ -397,7 +399,6 @@
         const statusDiv = document.getElementById('status');
         statusDiv.style.display = 'block';
         statusDiv.textContent += msg + '\n';
-        console.log(msg);
     }
 
     function clearStatus() {
@@ -413,31 +414,20 @@
             const response = await fetch('my_lsq_data.txt');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const text = await response.text();
-            
             const lines = text.split(/\r?\n/);
             const headers = lines[0].split('\t');
-            
             const pcIndices = [];
-            headers.forEach((h, i) => {
-                if (h.startsWith('PC')) pcIndices.push(i);
-            });
-
-            let eigscale = [];
-            let eigvals = [];
+            headers.forEach((h, i) => { if (h.startsWith('PC')) pcIndices.push(i); });
+            let eigscale = [], eigvals = [];
             const modelSnps = new Map();
-
             for (let i = 1; i < lines.length; i++) {
                 if (!lines[i].trim()) continue;
                 const cols = lines[i].split('\t');
                 const id = cols[0];
-
                 const pcs = pcIndices.map(idx => parseFloat(cols[idx]));
-
-                if (id === 'EIGSCALE') {
-                    eigscale = pcs;
-                } else if (id === 'EIGVAL') {
-                    eigvals = pcs;
-                } else {
+                if (id === 'EIGSCALE') eigscale = pcs;
+                else if (id === 'EIGVAL') eigvals = pcs;
+                else {
                     modelSnps.set(id, {
                         A1: cols[headers.indexOf('A1')],
                         A2: cols[headers.indexOf('A2')],
@@ -447,156 +437,75 @@
                     });
                 }
             }
-            
-            logStatus(`   -> Model loaded. Found ${modelSnps.size} SNPs.`);
             return { modelSnps, eigscale, eigvals };
-        } catch (e) {
-            logStatus(`Error loading model: ${e.message}`);
-            throw e;
-        }
+        } catch (e) { throw e; }
     }
 
     async function processData() {
         const fileInput = document.getElementById('dnaFile');
         const sampleName = document.getElementById('sampleName').value.trim() || 'Sample';
         const processBtn = document.getElementById('processBtn');
-
-        if (!fileInput.files.length) {
-            alert("Please select a DNA file first.");
-            return;
-        }
-
+        if (!fileInput.files.length) { alert("Please select a DNA file first."); return; }
         clearStatus();
         processBtn.disabled = true;
-
         try {
             const { modelSnps, eigscale, eigvals } = await loadModel();
-
-            logStatus(`2. Loading DNA data from ${fileInput.files[0].name}...`);
+            logStatus(`2. Loading DNA data...`);
             const dnaText = await fileInput.files[0].text();
             const dnaLines = dnaText.split(/\r?\n/);
-            
             let isMyHeritage = false, isAncestry = false, is23andMe = false;
-            let delimiter = '\t';
-            let dataStartIndex = 0;
-            let headerTokens = [];
-
+            let delimiter = '\t', dataStartIndex = 0, headerTokens = [];
             for (let i = 0; i < dnaLines.length; i++) {
                 let line = dnaLines[i].trim();
                 if (!line || line.startsWith('#')) continue;
-                
                 let headerLine = line.replace(/"/g, '').toUpperCase();
-                if (headerLine.includes('RESULT')) {
-                    isMyHeritage = true;
-                    delimiter = ',';
-                    logStatus("   -> Detected MyHeritage format.");
-                } else {
+                if (headerLine.includes('RESULT')) { isMyHeritage = true; delimiter = ','; } 
+                else {
                     delimiter = '\t';
                     headerTokens = headerLine.split(delimiter);
-                    if (headerTokens.length >= 5) {
-                        isAncestry = true;
-                        logStatus("   -> Detected AncestryDNA format.");
-                    } else if (headerTokens.length === 4) {
-                        is23andMe = true;
-                        logStatus("   -> Detected 23andMe format.");
-                    }
+                    if (headerTokens.length >= 5) isAncestry = true;
+                    else if (headerTokens.length === 4) is23andMe = true;
                 }
                 headerTokens = headerLine.split(delimiter);
                 dataStartIndex = i + 1;
                 break;
             }
-
-            if (!isMyHeritage && !isAncestry && !is23andMe) {
-                throw new Error("Unrecognized DNA file format.");
-            }
-
             let rsidIdx = 0, a1Idx = -1, a2Idx = -1, resultIdx = -1, genotypeIdx = -1;
-            if (isMyHeritage) {
-                rsidIdx = headerTokens.indexOf('RSID');
-                resultIdx = headerTokens.indexOf('RESULT');
-            } else if (isAncestry) {
-                rsidIdx = 0; a1Idx = 3; a2Idx = 4;
-            } else if (is23andMe) {
-                rsidIdx = 0; genotypeIdx = 3;
-            }
+            if (isMyHeritage) { rsidIdx = headerTokens.indexOf('RSID'); resultIdx = headerTokens.indexOf('RESULT'); }
+            else if (isAncestry) { rsidIdx = 0; a1Idx = 3; a2Idx = 4; }
+            else if (is23andMe) { rsidIdx = 0; genotypeIdx = 3; }
 
-            logStatus("3. Intersecting SNPs and validating alleles...");
-            const W = [];
-            const Y = [];
-            let validCount = 0;
-
+            logStatus("3. Intersecting SNPs...");
+            const W = [], Y = [];
             for (let i = dataStartIndex; i < dnaLines.length; i++) {
                 let line = dnaLines[i].trim();
                 if (!line) continue;
-                
                 let cols = line.replace(/"/g, '').split(delimiter);
-                let rsid = cols[rsidIdx];
-                let allele1 = '', allele2 = '';
-
-                if (isMyHeritage) {
-                    let res = cols[resultIdx];
-                    if (!res || res.length !== 2 || res.includes('-')) continue;
-                    allele1 = res[0]; allele2 = res[1];
-                } else if (isAncestry) {
-                    allele1 = cols[a1Idx]; allele2 = cols[a2Idx];
-                } else if (is23andMe) {
-                    let gt = cols[genotypeIdx];
-                    if (!gt || gt.length !== 2 || gt.includes('-')) continue;
-                    allele1 = gt[0]; allele2 = gt[1];
-                }
-
+                let rsid = cols[rsidIdx], allele1 = '', allele2 = '';
+                if (isMyHeritage) { let res = cols[resultIdx]; if (res?.length === 2) { allele1 = res[0]; allele2 = res[1]; } }
+                else if (isAncestry) { allele1 = cols[a1Idx]; allele2 = cols[a2Idx]; }
+                else if (is23andMe) { let gt = cols[genotypeIdx]; if (gt?.length === 2) { allele1 = gt[0]; allele2 = gt[1]; } }
                 if (modelSnps.has(rsid)) {
                     let m = modelSnps.get(rsid);
-                    let valid_1 = (allele1 === m.A1 || allele1 === m.A2);
-                    let valid_2 = (allele2 === m.A1 || allele2 === m.A2);
-
-                    if (valid_1 && valid_2) {
-                        validCount++;
+                    if ((allele1 === m.A1 || allele1 === m.A2) && (allele2 === m.A1 || allele2 === m.A2)) {
                         let g = (allele1 === m.A1 ? 1 : 0) + (allele2 === m.A1 ? 1 : 0);
-                        let y_val = (g * m.XFANCY) - m.XMEAN;
-                        
                         W.push(m.PCs);
-                        Y.push([y_val]);
+                        Y.push([(g * m.XFANCY) - m.XMEAN]);
                     }
                 }
             }
-
-            logStatus(`   -> Found ${validCount} valid, strand-aligned SNPs.`);
-            if (validCount === 0) throw new Error("No valid SNPs found for projection.");
-
-            logStatus("4. Solving Least Squares Regression...");
-            
-            const wMat = new Matrix(W);
-            const yMat = new Matrix(Y);
-            
+            logStatus(`4. Solving Regression (${W.length} SNPs)...`);
+            const wMat = new Matrix(W), yMat = new Matrix(Y);
             const wT = wMat.transpose();
-            const wTw = wT.mmul(wMat);
-            const wTwInv = inverse(wTw);
-            const wTy = wT.mmul(yMat);
-            const beta = wTwInv.mmul(wTy);
-
-            const final_pcs = [];
+            const beta = inverse(wT.mmul(wMat)).mmul(wT.mmul(yMat));
             let outStr = [sampleName];
-
             for (let i = 0; i < beta.rows; i++) {
-                let val = beta.get(i, 0) * eigscale[i] * Math.sqrt(eigvals[i]);
-                final_pcs.push(val);
-                outStr.push(val.toFixed(15));
+                outStr.push((beta.get(i, 0) * eigscale[i] * Math.sqrt(eigvals[i])).toFixed(15));
             }
-
-            logStatus("5. Projection complete!");
-            
-            const outputTextarea = document.getElementById('outputCoords');
-            outputTextarea.value = outStr.join(',');
-
-            // Automatically scroll to the distance calculator
+            document.getElementById('outputCoords').value = outStr.join(',');
+            logStatus("5. Complete!");
             document.getElementById('distanceResults').scrollIntoView({ behavior: 'smooth' });
-
-        } catch (e) {
-            logStatus(`\nERROR: ${e.message}`);
-        } finally {
-            processBtn.disabled = false;
-        }
+        } catch (e) { logStatus(`ERROR: ${e.message}`); } finally { processBtn.disabled = false; }
     }
 </script>
 
