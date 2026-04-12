@@ -31,12 +31,28 @@
             font-weight: bold;
             margin-bottom: 8px;
         }
-        input[type="text"], input[type="file"] {
+        .radio-group {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        .radio-group label {
+            font-weight: normal;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+        }
+        input[type="text"], input[type="file"], input[type="number"] {
             width: 100%;
             padding: 10px;
             border: 1px solid #d1d5db;
             border-radius: 4px;
             box-sizing: border-box;
+        }
+        input[type="number"] {
+            width: 150px;
         }
         button {
             background-color: #2563eb;
@@ -89,10 +105,43 @@
             box-sizing: border-box;
             resize: vertical;
         }
+        #customSourceText {
+            display: none;
+            margin-bottom: 15px;
+            height: 150px;
+        }
         .source-buttons {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
+        }
+        
+        /* Distance Table Styles */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        th, td {
+            text-align: left;
+            padding: 10px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        th {
+            background-color: #f3f4f6;
+            font-weight: bold;
+        }
+        .dist-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: white;
+            font-weight: bold;
+            font-family: monospace;
+            display: inline-block;
+            min-width: 60px;
+            text-align: center;
+            text-shadow: 0px 1px 2px rgba(0,0,0,0.5);
         }
     </style>
 </head>
@@ -100,11 +149,11 @@
 
 <!-- PROJECTOR SECTION -->
 <div class="card">
-    <h1>DNA PCA Projector</h1>
+    <h1>N25 Projector</h1>
     
     <div class="form-group">
         <label for="sampleName">Sample Name:</label>
-        <input type="text" id="sampleName" placeholder="Enter sample name">
+        <input type="text" id="sampleName" value="" placeholder="Enter sample name">
     </div>
 
     <div class="form-group">
@@ -116,11 +165,37 @@
 
     <div id="status"></div>
 
-    <div id="result-container">
-        <label for="outputCoords">N25 Coordinates:</label>
-        <textarea id="outputCoords" readonly></textarea>
+    <div id="result-container" style="display: block;">
+        <label for="outputCoords">N25 / Vahaduo Coordinates (You can also paste existing ones here):</label>
+        <textarea id="outputCoords" placeholder="Sample,0.01,0.02,0.03..."></textarea>
         <button class="btn-secondary" onclick="copyToClipboard('outputCoords', this)">Copy Coordinates</button>
     </div>
+</div>
+
+<!-- DISTANCE CALCULATOR SECTION -->
+<div class="card">
+    <h2>Distance Calculator</h2>
+    <p>Find the closest populations to the coordinates in the text box above.</p>
+    
+    <div class="form-group">
+        <label>Select Reference:</label>
+        <div class="radio-group">
+            <label><input type="radio" name="distSource" value="modern_only.csv" checked onchange="toggleCustomSource()"> Modern</label>
+            <label><input type="radio" name="distSource" value="non_modern_only.csv" onchange="toggleCustomSource()"> Non-Modern</label>
+            <label><input type="radio" name="distSource" value="my_calculator_source.csv" onchange="toggleCustomSource()"> All</label>
+            <label><input type="radio" name="distSource" value="custom" onchange="toggleCustomSource()"> Custom</label>
+        </div>
+        <textarea id="customSourceText" placeholder="Paste custom reference coordinates here..."></textarea>
+    </div>
+
+    <div class="form-group">
+        <label for="topN">Top N Distances:</label>
+        <input type="number" id="topN" value="25" min="1" max="500">
+    </div>
+
+    <button onclick="calculateDistances(this)">Calculate Distances</button>
+
+    <div id="distanceResults"></div>
 </div>
 
 <!-- SOURCE COORDINATES SECTION -->
@@ -139,7 +214,6 @@
 
     // --- UTILITY FUNCTIONS ---
     
-    // Fetch a file from the server and copy to clipboard
     async function fetchAndCopy(filename, button) {
         const originalText = button.textContent;
         button.textContent = "Fetching...";
@@ -152,25 +226,24 @@
             
             await navigator.clipboard.writeText(text);
             button.textContent = "Copied!";
-            button.style.backgroundColor = "#10b981"; // Turn green on success
+            button.style.backgroundColor = "#10b981"; 
         } catch (e) {
             alert(`Failed to fetch ${filename}: ${e.message}`);
             button.textContent = "Error";
-            button.style.backgroundColor = "#ef4444"; // Turn red on error
+            button.style.backgroundColor = "#ef4444"; 
         } finally {
             setTimeout(() => {
                 button.textContent = originalText;
                 button.disabled = false;
-                button.style.backgroundColor = ""; // Reset color
+                button.style.backgroundColor = ""; 
             }, 2000);
         }
     }
 
-    // Copy textarea content to clipboard
     function copyToClipboard(elementId, button) {
         const copyText = document.getElementById(elementId);
         copyText.select();
-        copyText.setSelectionRange(0, 99999); // For mobile devices
+        copyText.setSelectionRange(0, 99999); 
         
         navigator.clipboard.writeText(copyText.value).then(() => {
             const originalText = button.textContent;
@@ -179,6 +252,143 @@
         }).catch(err => {
             alert("Failed to copy text: " + err);
         });
+    }
+
+    // --- DISTANCE CALCULATOR LOGIC ---
+
+    function toggleCustomSource() {
+        const val = document.querySelector('input[name="distSource"]:checked').value;
+        const customArea = document.getElementById('customSourceText');
+        if (val === 'custom') {
+            customArea.style.display = 'block';
+        } else {
+            customArea.style.display = 'none';
+        }
+    }
+
+    function getEuclideanDistance(arr1, arr2) {
+        let sum = 0;
+        const len = Math.min(arr1.length, arr2.length);
+        for (let i = 0; i < len; i++) {
+            sum += Math.pow(arr1[i] - arr2[i], 2);
+        }
+        return Math.sqrt(sum);
+    }
+
+    // Hardcoded Green-Yellow-Red color scale
+    function getGnYlRdColor(val) {
+        if (val <= 0.1) {
+            // 0 to 0.1: Green (120) to Yellow (60)
+            let ratio = val / 0.1;
+            let hue = 120 - (ratio * 60);
+            return `hsl(${hue}, 80%, 45%)`;
+        } else if (val <= 0.5) {
+            // 0.1 to 0.5: Yellow (60) to Red (0)
+            let ratio = (val - 0.1) / 0.4;
+            let hue = 60 - (ratio * 60);
+            return `hsl(${hue}, 80%, 45%)`;
+        } else {
+            // >= 0.5: Red (0)
+            return `hsl(0, 80%, 45%)`;
+        }
+    }
+
+    async function calculateDistances(btn) {
+        const coordsText = document.getElementById('outputCoords').value.trim();
+        if (!coordsText) {
+            alert("Please project a file or paste coordinates into the text box first.");
+            return;
+        }
+
+        const userLine = coordsText.split(/\r?\n/)[0].split(',');
+        const userName = userLine[0];
+        const userCoords = userLine.slice(1).map(Number);
+
+        if (userCoords.length < 2 || isNaN(userCoords[0])) {
+            alert("Invalid coordinates format.");
+            return;
+        }
+
+        const sourceFile = document.querySelector('input[name="distSource"]:checked').value;
+        const topN = parseInt(document.getElementById('topN').value) || 25;
+        const resultsDiv = document.getElementById('distanceResults');
+
+        btn.disabled = true;
+        btn.textContent = "Calculating...";
+
+        try {
+            let text = "";
+            if (sourceFile === 'custom') {
+                text = document.getElementById('customSourceText').value;
+                if (!text.trim()) {
+                    throw new Error("Custom source text is empty.");
+                }
+            } else {
+                const response = await fetch(sourceFile);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                text = await response.text();
+            }
+
+            const lines = text.split(/\r?\n/);
+            const distances = [];
+
+            for (let line of lines) {
+                if (!line.trim()) continue;
+                const parts = line.split(',');
+                const popName = parts[0];
+                const popCoords = parts.slice(1).map(Number);
+
+                if (popCoords.length === userCoords.length && !isNaN(popCoords[0])) {
+                    const dist = getEuclideanDistance(userCoords, popCoords);
+                    distances.push({ name: popName, distance: dist });
+                }
+            }
+
+            distances.sort((a, b) => a.distance - b.distance);
+            const topResults = distances.slice(0, topN);
+
+            if (topResults.length === 0) {
+                resultsDiv.innerHTML = "<p>No matching coordinate lengths found in source file.</p>";
+                return;
+            }
+
+            // Build Table
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 50px;">#</th>
+                            <th>Distance</th>
+                            <th>Population</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            topResults.forEach((res, index) => {
+                const color = getGnYlRdColor(res.distance);
+                html += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>
+                            <span class="dist-badge" style="background-color: ${color};">
+                                ${res.distance.toFixed(4)}
+                            </span>
+                        </td>
+                        <td>${res.name}</td>
+                    </tr>
+                `;
+            });
+
+            html += `</tbody></table>`;
+            resultsDiv.innerHTML = html;
+
+        } catch (e) {
+            alert(`Error calculating distances: ${e.message}`);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Calculate Distances";
+        }
     }
 
     // --- PROJECTION LOGIC ---
@@ -194,11 +404,11 @@
         const statusDiv = document.getElementById('status');
         statusDiv.textContent = '';
         statusDiv.style.display = 'none';
-        document.getElementById('result-container').style.display = 'none';
+        document.getElementById('distanceResults').innerHTML = ''; 
     }
 
     async function loadModel() {
-        logStatus("1. Loading model from /my_lsq_data.txt...");
+        logStatus("1. Loading model from my_lsq_data.txt...");
         try {
             const response = await fetch('my_lsq_data.txt');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -207,7 +417,6 @@
             const lines = text.split(/\r?\n/);
             const headers = lines[0].split('\t');
             
-            // Find PC columns
             const pcIndices = [];
             headers.forEach((h, i) => {
                 if (h.startsWith('PC')) pcIndices.push(i);
@@ -261,15 +470,12 @@
         processBtn.disabled = true;
 
         try {
-            // Step 1: Load Model
             const { modelSnps, eigscale, eigvals } = await loadModel();
 
-            // Step 2: Load and Parse DNA File
             logStatus(`2. Loading DNA data from ${fileInput.files[0].name}...`);
             const dnaText = await fileInput.files[0].text();
             const dnaLines = dnaText.split(/\r?\n/);
             
-            // Detect Format
             let isMyHeritage = false, isAncestry = false, is23andMe = false;
             let delimiter = '\t';
             let dataStartIndex = 0;
@@ -304,7 +510,6 @@
                 throw new Error("Unrecognized DNA file format.");
             }
 
-            // Find column indices based on format
             let rsidIdx = 0, a1Idx = -1, a2Idx = -1, resultIdx = -1, genotypeIdx = -1;
             if (isMyHeritage) {
                 rsidIdx = headerTokens.indexOf('RSID');
@@ -328,7 +533,6 @@
                 let rsid = cols[rsidIdx];
                 let allele1 = '', allele2 = '';
 
-                // Extract alleles based on format
                 if (isMyHeritage) {
                     let res = cols[resultIdx];
                     if (!res || res.length !== 2 || res.includes('-')) continue;
@@ -341,7 +545,6 @@
                     allele1 = gt[0]; allele2 = gt[1];
                 }
 
-                // Intersection and validation
                 if (modelSnps.has(rsid)) {
                     let m = modelSnps.get(rsid);
                     let valid_1 = (allele1 === m.A1 || allele1 === m.A2);
@@ -361,10 +564,8 @@
             logStatus(`   -> Found ${validCount} valid, strand-aligned SNPs.`);
             if (validCount === 0) throw new Error("No valid SNPs found for projection.");
 
-            // Step 3: Least Squares Regression
             logStatus("4. Solving Least Squares Regression...");
             
-            // beta = (W^T * W)^-1 * W^T * Y
             const wMat = new Matrix(W);
             const yMat = new Matrix(Y);
             
@@ -374,7 +575,6 @@
             const wTy = wT.mmul(yMat);
             const beta = wTwInv.mmul(wTy);
 
-            // Apply EIGSCALE and SQRT(EIGVAL)
             const final_pcs = [];
             let outStr = [sampleName];
 
@@ -386,10 +586,11 @@
 
             logStatus("5. Projection complete!");
             
-            // Show results
             const outputTextarea = document.getElementById('outputCoords');
             outputTextarea.value = outStr.join(',');
-            document.getElementById('result-container').style.display = 'block';
+
+            // Automatically scroll to the distance calculator
+            document.getElementById('distanceResults').scrollIntoView({ behavior: 'smooth' });
 
         } catch (e) {
             logStatus(`\nERROR: ${e.message}`);
