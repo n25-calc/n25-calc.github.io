@@ -20,8 +20,9 @@
             padding: 30px;
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
         }
-        h1 { margin-top: 0; }
+        h1, h2 { margin-top: 0; }
         .form-group {
             margin-bottom: 20px;
         }
@@ -46,14 +47,25 @@
             border-radius: 4px;
             cursor: pointer;
             font-weight: bold;
+            transition: background-color 0.2s;
         }
         button:hover { background-color: #1d4ed8; }
         button:disabled { background-color: #93c5fd; cursor: not-allowed; }
+        
         .btn-secondary {
             background-color: #10b981;
             margin-top: 10px;
         }
         .btn-secondary:hover { background-color: #059669; }
+        
+        .btn-source {
+            background-color: #4b5563;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        .btn-source:hover { background-color: #374151; }
+        
         #status {
             margin-top: 20px;
             padding: 15px;
@@ -77,10 +89,16 @@
             box-sizing: border-box;
             resize: vertical;
         }
+        .source-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
     </style>
 </head>
 <body>
 
+<!-- PROJECTOR SECTION -->
 <div class="card">
     <h1>DNA PCA Projector</h1>
     
@@ -101,12 +119,69 @@
     <div id="result-container">
         <label for="outputCoords">Global25 / Vahaduo Coordinates:</label>
         <textarea id="outputCoords" readonly></textarea>
-        <button class="btn-secondary" onclick="copyToClipboard()">Copy Coordinates</button>
+        <button class="btn-secondary" onclick="copyToClipboard('outputCoords', this)">Copy Coordinates</button>
+    </div>
+</div>
+
+<!-- SOURCE COORDINATES SECTION -->
+<div class="card">
+    <h2>Calculator Sources</h2>
+    <p>Copy the reference populations to paste into the Vahaduo Source tab.</p>
+    <div class="source-buttons">
+        <button class="btn-source" onclick="fetchAndCopy('modern_only.csv', this)">Copy Modern Sources</button>
+        <button class="btn-source" onclick="fetchAndCopy('non_modern_only.csv', this)">Copy Non-Modern Sources</button>
+        <button class="btn-source" onclick="fetchAndCopy('my_calculator_source.csv', this)">Copy All Sources</button>
     </div>
 </div>
 
 <script>
     const { Matrix, inverse } = mlMatrix;
+
+    // --- UTILITY FUNCTIONS ---
+    
+    // Fetch a file from the server and copy to clipboard
+    async function fetchAndCopy(filename, button) {
+        const originalText = button.textContent;
+        button.textContent = "Fetching...";
+        button.disabled = true;
+
+        try {
+            const response = await fetch(filename);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const text = await response.text();
+            
+            await navigator.clipboard.writeText(text);
+            button.textContent = "Copied!";
+            button.style.backgroundColor = "#10b981"; // Turn green on success
+        } catch (e) {
+            alert(`Failed to fetch ${filename}: ${e.message}`);
+            button.textContent = "Error";
+            button.style.backgroundColor = "#ef4444"; // Turn red on error
+        } finally {
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.disabled = false;
+                button.style.backgroundColor = ""; // Reset color
+            }, 2000);
+        }
+    }
+
+    // Copy textarea content to clipboard
+    function copyToClipboard(elementId, button) {
+        const copyText = document.getElementById(elementId);
+        copyText.select();
+        copyText.setSelectionRange(0, 99999); // For mobile devices
+        
+        navigator.clipboard.writeText(copyText.value).then(() => {
+            const originalText = button.textContent;
+            button.textContent = "Copied!";
+            setTimeout(() => button.textContent = originalText, 2000);
+        }).catch(err => {
+            alert("Failed to copy text: " + err);
+        });
+    }
+
+    // --- PROJECTION LOGIC ---
 
     function logStatus(msg) {
         const statusDiv = document.getElementById('status');
@@ -125,7 +200,7 @@
     async function loadModel() {
         logStatus("1. Loading model from /my_lsq_data.txt...");
         try {
-            const response = await fetch('/my_lsq_data.txt');
+            const response = await fetch('my_lsq_data.txt');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const text = await response.text();
             
@@ -321,17 +396,6 @@
         } finally {
             processBtn.disabled = false;
         }
-    }
-
-    function copyToClipboard() {
-        const copyText = document.getElementById("outputCoords");
-        copyText.select();
-        copyText.setSelectionRange(0, 99999); // For mobile devices
-        navigator.clipboard.writeText(copyText.value).then(() => {
-            alert("Coordinates copied to clipboard!");
-        }).catch(err => {
-            alert("Failed to copy text: " + err);
-        });
     }
 </script>
 
