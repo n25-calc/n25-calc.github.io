@@ -227,7 +227,7 @@
     <div class="source-buttons">
         <button class="btn-source" onclick="fetchAndCopy('modern_only.csv', this)">Modern Individuals</button>
         <button class="btn-source" onclick="fetchAndCopy('non_modern_only.csv', this)">Non-Modern Individuals</button>
-        <button class="btn-source" onclick="fetchAndCopy('my_calculator_source.csv', this)">All Individuals</button>
+        <button class="btn-source" onclick="fetchAndCopy('sources.csv', this)">All Individuals</button>
     </div>
 </div>
 
@@ -332,7 +332,7 @@
             if (mode === 'ind') {
                 if (category === 'modern') sourceFile = 'modern_only.csv';
                 else if (category === 'ancient') sourceFile = 'non_modern_only.csv';
-                else sourceFile = 'my_calculator_source.csv';
+                else sourceFile = 'sources.csv';
             } else {
                 if (category === 'modern') sourceFile = 'modern_populations.csv';
                 else if (category === 'ancient') sourceFile = 'non_modern_populations.csv';
